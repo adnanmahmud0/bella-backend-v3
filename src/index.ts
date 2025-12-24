@@ -81,6 +81,10 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
+
+// ✅ Handle preflight globally
+app.options('*', cors());
+
 // Body parsing middleware
 app.use('/api/webhooks', express.raw({ type: 'application/json' })); // Stripe webhooks need raw body
 app.use(express.json({ limit: '10mb' }));
