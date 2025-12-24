@@ -38,13 +38,7 @@ const PORT = process.env.PORT || 3001;
 // Initialize Prisma Client
 export const prisma = new PrismaClient();
 
-// Rate limiting
-// const limiter = rateLimit({
-//   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
-//   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
-//   message: 'Too many requests from this IP, please try again later.',
-// });
-// For development, we can disable rate limiting
+// Rate limiting (safe for development + production)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000,
@@ -56,46 +50,41 @@ app.use(compression());
 app.use(limiter);
 app.use(morgan('combined'));
 
-// CORS configuration
-const allowedOrigins = [
-  process.env.FRONTEND_URL?.replace(/\/$/, ''), // Remove trailing slash if exists
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'https://bella-six-ashy.vercel.app',
-].filter(Boolean); // Remove undefined values
+// ======================================
+// ✅ CORS — ALLOW ALL WEBSITES (OPEN)
+// ======================================
+app.use(
+  cors({
+    origin: true,        // allow all origins
+    credentials: true,   // allow cookies / auth headers
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or Postman)
-    if (!origin) return callback(null, true);
+// ======================================
+// Body parsing
+// ======================================
 
-    // Check if the origin is in our allowed list
-    if (allowedOrigins.some(allowedOrigin => allowedOrigin === origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS policy: Origin ${origin} not allowed`));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+// Stripe webhooks need raw body
+app.use('/api/webhooks', express.raw({ type: 'application/json' }));
 
-
-// ✅ Handle preflight globally
-app.options('*', cors());
-
-// Body parsing middleware
-app.use('/api/webhooks', express.raw({ type: 'application/json' })); // Stripe webhooks need raw body
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Health check endpoint
+// ======================================
+// Health check
+// ======================================
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+  });
 });
 
+// ======================================
 // API Routes
+// ======================================
 app.use('/api/auth', authRoutes);
 app.use('/api/partner-auth', partnerAuthRoutes);
 app.use('/api/admin', adminRoutes);
@@ -116,14 +105,20 @@ app.use('/api/postcodes', postcodeRoutes);
 app.use('/api/extra-services', extraServicesRoutes);
 app.use('/api/stripe-connect', stripeConnectRoutes);
 
-// Serve static files (uploads)
+// ======================================
+// Static files
+// ======================================
 app.use('/uploads', express.static('uploads'));
 
-// Error handling middleware
+// ======================================
+// Error handling
+// ======================================
 app.use(notFound);
 app.use(errorHandler);
 
+// ======================================
 // Graceful shutdown
+// ======================================
 process.on('SIGINT', async () => {
   console.log('Shutting down gracefully...');
   await prisma.$disconnect();
@@ -136,7 +131,9 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
+// ======================================
 // Start server
+// ======================================
 app.listen(PORT, () => {
   console.log(`🚗 Bella Car Wash API is running on port ${PORT}`);
   console.log(`📋 Health check: http://localhost:${PORT}/health`);
