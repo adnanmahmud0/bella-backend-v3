@@ -536,16 +536,26 @@ router.post('/complete', partnerAuthenticate, async (req: AuthenticatedRequest, 
       return res.status(404).json({ error: 'Verification code not found' });
     }
 
-    // Check if service was started by this partner
-    if (verificationCode.usedBy !== partnerId) {
-      return res.status(403).json({
-        error: 'Unauthorized',
-        message: 'This service was not started by you',
-      });
-    }
-
-    // Check if status is IN_PROGRESS
-    if (verificationCode.status !== 'IN_PROGRESS') {
+    // Check status and permissions
+    if (verificationCode.status === 'PENDING') {
+      // Allow direct completion from PENDING (One-step process)
+      // Check if code is expired before allowing processing
+      if (isCodeExpired(verificationCode.expiresAt)) {
+        await prisma.verificationCode.update({
+          where: { id: verificationId },
+          data: { status: 'EXPIRED' },
+        });
+        return res.status(400).json({ error: 'Code has expired' });
+      }
+    } else if (verificationCode.status === 'IN_PROGRESS') {
+      // Check if service was started by this partner
+      if (verificationCode.usedBy !== partnerId) {
+        return res.status(403).json({
+          error: 'Unauthorized',
+          message: 'This service was not started by you',
+        });
+      }
+    } else {
       return res.status(400).json({
         error: 'Invalid status',
         message: `Cannot complete service. Code status is ${verificationCode.status}`,
