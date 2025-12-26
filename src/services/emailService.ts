@@ -25,27 +25,11 @@ interface EmailOptions {
 }
 
 /**
- * Send email using Nodemailer (SMTP) with fallback to SendGrid
+ * Send email using SendGrid as primary, with no fallback to SMTP for now.
+ * We prioritize SendGrid because the user specifically requested it.
  */
 export async function sendEmail(options: EmailOptions): Promise<void> {
-  // Try sending with Nodemailer first
-  try {
-    const info = await transporter.sendMail({
-      from: `"${process.env.EMAIL_FROM_NAME || 'Bella Car Wash'}" <${process.env.SMTP_USER || process.env.EMAIL_FROM}>`,
-      to: options.to,
-      subject: options.subject,
-      text: options.text,
-      html: options.html,
-    });
-
-    console.log('✅ Email sent successfully via SMTP:', info.messageId);
-    return;
-  } catch (smtpError: any) {
-    console.warn('⚠️ Failed to send email via SMTP:', smtpError.message);
-    console.log('🔄 Attempting fallback to SendGrid...');
-  }
-
-  // Fallback to SendGrid
+  // Use SendGrid as primary service
   try {
     if (!process.env.SENDGRID_API_KEY) {
       throw new Error('SendGrid API key not configured');
@@ -64,9 +48,26 @@ export async function sendEmail(options: EmailOptions): Promise<void> {
 
     await sgMail.send(msg);
     console.log('✅ Email sent successfully via SendGrid to:', options.to);
+    return;
   } catch (error: any) {
-    console.error('❌ Failed to send email (both SMTP and SendGrid failed):', error.response?.body || error.message);
-    throw new Error('Failed to send email');
+    console.error('❌ Failed to send email via SendGrid:', error.response?.body || error.message);
+
+    // Optional: Fallback to SMTP if SendGrid fails
+    console.log('🔄 Attempting fallback to SMTP...');
+    try {
+      const info = await transporter.sendMail({
+        from: `"${process.env.EMAIL_FROM_NAME || 'Bella Car Wash'}" <${process.env.SMTP_USER || process.env.EMAIL_FROM}>`,
+        to: options.to,
+        subject: options.subject,
+        text: options.text,
+        html: options.html,
+      });
+
+      console.log('✅ Email sent successfully via SMTP (fallback):', info.messageId);
+    } catch (smtpError: any) {
+      console.error('❌ Failed to send email (both SendGrid and SMTP failed):', smtpError.message);
+      throw new Error('Failed to send email');
+    }
   }
 }
 
